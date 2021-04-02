@@ -41,10 +41,24 @@ RUN cd ~ && \
 #     pip3 install -r requirements.txt
 # RUN whatever_command_you_run_to_start_your_app
 
+COPY requirements.txt /root/face_recognition/
+RUN cd /root/face_recognition && \
+    pip3 --default-timeout=1000 install -r requirements.txt
+
 COPY . /root/face_recognition
 RUN cd /root/face_recognition && \
-    pip3 install -r requirements.txt && \
+    pip3 --default-timeout=1000 install -r requirements.txt && \
     python3 setup.py install
 
-CMD cd /root/face_recognition/examples && \
-    python3 recognize_faces_in_pictures.py
+VOLUME ["/train_dir"]
+VOLUME ["/test_dir"]
+
+#RUN cd /root/face_recognition && \
+    #mkdir -p /train_dir/obama && \
+    #mkdir -p /train_dir/biden && \
+    #cp examples/obama_small.jpg /train_dir/obama/ && \
+    #cp examples/biden.jpg /train_dir/biden/ && \
+#    cp examples/obama2.jpg test_image.jpg
+
+CMD cd /root/face_recognition && \
+    python3 face_recognition_knn.py
