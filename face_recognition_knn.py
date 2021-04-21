@@ -40,6 +40,8 @@ import unicodedata
 import progressbar
 import time
 import pickle
+import json
+import datetime
 from PIL import Image, ImageDraw
 import face_recognition
 from face_recognition.face_recognition_cli import image_files_in_folder
@@ -48,6 +50,19 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 TRAIN_PATH = "/train_dir"
 TEST_PATH = "/test_dir"
+
+PROGRESS_FILE = os.path.join(TRAIN_PATH, 'progress.json')
+progress = {
+    'countImagesCurrent': 0,
+    'countImagesMax': 0,
+    'countImagesTotal': 0,
+    'nameImageCurrent': '',
+    'nameImageMax': '',
+    'newFacesCount': 0,
+    'newFaces': '',
+    'newFacesName': '',
+    'lastStartTime': datetime.datetime.now()
+}
 
 def train(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball_tree', verbose=False):
     """
@@ -205,9 +220,33 @@ def getImagesFromDir(img_path):
 
     return files    
 
+def saveProgress():
+    global progress
+    if (progress['countImagesCurrent'] > progress['countImagesMax']):
+        progress['countImagesMax'] = progress['countImagesCurrent']
+        progress['nameImageMax'] = progress['nameImageCurrent']
+    
+    with open(PROGRESS_FILE, 'w+') as outfile:
+        json.dump(progress, outfile, indent=4, sort_keys=True, default=str)
+
+def loadProgress():
+    global progress
+    try:
+        with open(PROGRESS_FILE, 'r') as json_file:
+            progress_tmp = json.load(json_file)
+            if 'newFacesName' in progress_tmp:
+                progress = progress_tmp
+    except IOError:
+        print('Do not exist today ('+PROGRESS_FILE+')')
+        saveProgress()
+
 if __name__ == "__main__":
 
     bar = progressbar.ProgressBar()
+
+    # read json progression
+    loadProgress()
+    #print(progress)
 
     unknown_found = False
     counter = 0
@@ -245,12 +284,19 @@ if __name__ == "__main__":
 
         print("Predict...")
         bar.max_value = len(files)
+        progress['countImagesTotal'] = len(files)
+        progress['newFacesCount'] = 0
+        progress['lastStartTime'] = datetime.datetime.now()
         cpt=0
         for image_file in files:
             full_file_path = os.path.join(TEST_PATH, image_file)
 
             cpt += 1
             bar.update(cpt)
+            progress['countImagesCurrent'] = cpt
+            progress['nameImageCurrent'] = full_file_path
+            saveProgress()
+
 
             if not os.path.isfile(full_file_path) or os.path.splitext(full_file_path)[1][1:] not in ALLOWED_EXTENSIONS:
                 #print("Ignore a file : "+full_file_path)
@@ -272,7 +318,12 @@ if __name__ == "__main__":
                 if face_key in training:
                     continue
 
+                progress['newFacesCount'] += 1
+                progress['newFaces'] = face_key
+                progress['newFacesName'] = name
+                progress['newFacesValidated'] = True
                 print(face_key+" -> "+name)
+
                 # if unknown... add it
                 if name == "unknown":
                     
@@ -296,6 +347,7 @@ if __name__ == "__main__":
                     if not os.path.isfile(os.path.join(TRAIN_PATH, name , face_key+".jpg")):
                         # save it to the 'tovalidate' dir
                         # get the good directory
+                        progress['newFacesValidated'] = False
                         to_be_validate_dir = os.path.join(TRAIN_PATH, name , 'tovalidate')
                         if not os.path.isdir(to_be_validate_dir):
                             os.mkdir(to_be_validate_dir)
@@ -306,6 +358,7 @@ if __name__ == "__main__":
                             pil_image = Image.open(os.path.join(TEST_PATH, image_file)).convert("RGB")
                             cropped_image = pil_image.crop((left, top, right, bottom))
                             cropped_image.save(saved_face_path, "JPEG")
+                saveProgress()
 
             if unknown_found:
                 break
