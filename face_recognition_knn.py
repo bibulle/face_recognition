@@ -221,7 +221,7 @@ def getImagesFromDir(img_path):
         if os.path.isdir(full_file_path):
             dirs.append(os.path.join(img_path, image_file))
         elif os.path.isfile(full_file_path) and os.path.splitext(full_file_path)[1][1:] in ALLOWED_EXTENSIONS:
-            files.append(os.path.join(img_path, image_file))
+            files.append(re.sub('^[.]/', '',os.path.join(img_path, image_file)))
 
     for d in dirs:
         for f in getImagesFromDir(d):
@@ -402,3 +402,4 @@ if __name__ == "__main__":
                 print("Restart asked.("+config['restartAskedTime'].isoformat()+" > "+startingDate.isoformat()+")", flush=True)
                 unknown_found = True
                 break
+
