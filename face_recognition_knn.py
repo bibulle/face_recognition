@@ -115,7 +115,7 @@ def train(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball_tree
             if len(face_bounding_boxes) != 1:
                 # If there are no people (or too many people) in a training image, skip the image.
                 if verbose:
-                    print("Image {} not suitable for training: {}".format(img_path, "Didn't find a face" if len(face_bounding_boxes) < 1 else "Found more than one face"))
+                    print("Image {} not suitable for training: {}".format(img_path, "Didn't find a face" if len(face_bounding_boxes) < 1 else "Found more than one face"), flush=True)
             else:
                 # Add face encoding for current image to the training set
                 X.append(face_recognition.face_encodings(image, known_face_locations=face_bounding_boxes)[0])
@@ -125,7 +125,7 @@ def train(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball_tree
     if n_neighbors is None:
         n_neighbors = int(round(math.sqrt(len(X))))
         if verbose:
-            print("Chose n_neighbors automatically:", n_neighbors)
+            print("Chose n_neighbors automatically:", n_neighbors, flush=True)
 
     # Create and train the KNN classifier
     knn_clf = neighbors.KNeighborsClassifier(n_neighbors=n_neighbors, algorithm=knn_algo, weights='distance')
@@ -248,7 +248,7 @@ def loadProgress():
             if 'newFacesName' in progress_tmp:
                 progress = progress_tmp
     except IOError:
-        print('Do not exist today ('+PROGRESS_FILE+')')
+        print('Do not exist today ('+PROGRESS_FILE+')', flush=True)
         saveProgress()
 
 
@@ -262,7 +262,7 @@ def loadConfig():
                 config['restartAskedTime'] = datetime.datetime.fromisoformat(config['restartAskedTime'])
                 # print(config)
     except IOError:
-        print('Do not exist today ('+CONFIG_FILE+')')
+        print('Do not exist today ('+CONFIG_FILE+')', flush=True)
 
 
 if __name__ == "__main__":
@@ -283,13 +283,13 @@ if __name__ == "__main__":
     while (counter == 0) or (unknown_found and counter < 100):
 
         startingDate = datetime.datetime.now()
-        print("Starting --------("+startingDate.isoformat()+")")
+        print("Starting --------("+startingDate.isoformat()+")", flush=True)
 
         unknown_found = False
         counter += 1
 
         # read already found
-        print("Reading already found...")
+        print("Reading already found...", flush=True)
         training = {}
         for class_dir in os.listdir(TRAIN_PATH):
             if not os.path.isdir(os.path.join(TRAIN_PATH, class_dir)):
@@ -297,13 +297,13 @@ if __name__ == "__main__":
             for image_name in os.listdir(os.path.join(TRAIN_PATH, class_dir)):
                 training[unicodedata.normalize('NFC', re.sub("[.][^.]*$", "", image_name))] = class_dir
         #print(training[unicodedata.normalize('NFC',"Boite 1 - Juin 2001 ?_Numériser 13.jpeg (705, 1380, 757, 1432)")])
-        print("done")
+        print("done", flush=True)
 
         # STEP 1: Train the KNN classifier and save it to disk
         # Once the model is trained and saved, you can skip this step next time.
-        print("Training KNN classifier...")
+        print("Training KNN classifier...", flush=True)
         classifier = train(TRAIN_PATH, model_save_path="trained_knn_model.clf", n_neighbors=2)
-        print("Training complete!")
+        print("Training complete!", flush=True)
 
         # STEP 2: Using the trained classifier, make predictions for unknown images
 
@@ -311,7 +311,7 @@ if __name__ == "__main__":
         files = getImagesFromDir(".")
         # print(files.count(object))
 
-        print("Predict...")
+        print("Predict...", flush=True)
         if (config['logProgress']):
             bar.max_value = len(files)
         progress['countImagesTotal'] = len(files)
@@ -333,10 +333,10 @@ if __name__ == "__main__":
             saveProgress()
 
             if not os.path.isfile(full_file_path) or os.path.splitext(full_file_path)[1][1:] not in ALLOWED_EXTENSIONS:
-                #print("Ignore a file : "+full_file_path)
+                #print("Ignore a file : "+full_file_path, flush=True)
                 continue
 
-            #print("Looking for faces in {}".format(image_file))
+            #print("Looking for faces in {}".format(image_file), flush=True)
 
             # Find all people in the image using a trained classifier model
             # Note: You can pass in either a classifier file name or a classifier model instance
@@ -344,7 +344,7 @@ if __name__ == "__main__":
 
             # Print results on the console
             for name, (top, right, bottom, left) in predictions:
-                #print("- Found {} at ({}, {})".format(name, left, top))
+                #print("- Found {} at ({}, {})".format(name, left, top), flush=True)
 
                 face_key = unicodedata.normalize('NFC', ("%s (%d, %d, %d, %d)" % (image_file, left, top, right, bottom)).replace('/', '_'))
 
@@ -368,7 +368,7 @@ if __name__ == "__main__":
                         i += 1
                         unknown_dir = os.path.join(TRAIN_PATH, "Unknown_"+str(i).zfill(6))
                     os.mkdir(unknown_dir)
-                    # print(unknown_dir)
+                    # print(unknown_dir, flush=True)
 
                     # get the face and save it
                     pil_image = Image.open(os.path.join(TEST_PATH, image_file)).convert("RGB")
@@ -399,6 +399,6 @@ if __name__ == "__main__":
 
             loadConfig()
             if (startingDate < config['restartAskedTime']):
-                print("Restart asked.("+config['restartAskedTime'].isoformat()+" > "+startingDate.isoformat()+")")
+                print("Restart asked.("+config['restartAskedTime'].isoformat()+" > "+startingDate.isoformat()+")", flush=True)
                 unknown_found = True
                 break
