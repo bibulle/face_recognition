@@ -42,6 +42,7 @@ import time
 import pickle
 import json
 import datetime
+import logging
 from PIL import Image, ImageDraw
 import face_recognition
 from face_recognition.face_recognition_cli import image_files_in_folder
@@ -51,8 +52,11 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 TRAIN_PATH = "/train_dir"
 TEST_PATH = "/test_dir"
 
+MODEL_FILE = "trained_knn_model.clf"
+
 PROGRESS_FILE = os.path.join(TRAIN_PATH, 'progress.json')
 progress = {
+    'status': 'Starting',
     'countImagesCurrent': 0,
     'countImagesMax': 0,
     'countImagesTotal': 0,
@@ -68,11 +72,12 @@ CONFIG_FILE = os.path.join(TRAIN_PATH, 'config.json')
 config = {
     "logProgress": True,
     "sortImages": False,
-    "restartAskedTime": datetime.datetime.now()
+    "restartAskedTime": datetime.datetime.now(),
+    "logLevel": 10
 }
 
 
-def train(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball_tree', verbose=False):
+def trainModel(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball_tree', verbose=False):
     """
     Trains a k-nearest neighbors classifier for face recognition.
 
@@ -100,6 +105,8 @@ def train(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball_tree
     X = []
     y = []
 
+    logging.info('Train Model')
+
     # Loop through each person in the training set
     for class_dir in os.listdir(train_dir):
         if not os.path.isdir(os.path.join(train_dir, class_dir)):
@@ -115,7 +122,8 @@ def train(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball_tree
             if len(face_bounding_boxes) != 1:
                 # If there are no people (or too many people) in a training image, skip the image.
                 if verbose:
-                    print("Image {} not suitable for training: {}".format(img_path, "Didn't find a face" if len(face_bounding_boxes) < 1 else "Found more than one face"), flush=True)
+                    logging.debug("Image {} not suitable for training: {}".format(img_path, "Didn't find a face" if len(
+                        face_bounding_boxes) < 1 else "Found more than one face"))
             else:
                 # Add face encoding for current image to the training set
                 X.append(face_recognition.face_encodings(image, known_face_locations=face_bounding_boxes)[0])
@@ -125,7 +133,7 @@ def train(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball_tree
     if n_neighbors is None:
         n_neighbors = int(round(math.sqrt(len(X))))
         if verbose:
-            print("Chose n_neighbors automatically:", n_neighbors, flush=True)
+            logging.debug("Chose n_neighbors automatically:", n_neighbors)
 
     # Create and train the KNN classifier
     knn_clf = neighbors.KNeighborsClassifier(n_neighbors=n_neighbors, algorithm=knn_algo, weights='distance')
@@ -135,6 +143,8 @@ def train(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball_tree
     if model_save_path is not None:
         with open(model_save_path, 'wb') as f:
             pickle.dump(knn_clf, f)
+
+    logging.info("Training complete!")
 
     return knn_clf
 
@@ -212,7 +222,8 @@ def show_prediction_labels_on_image(img_path, predictions):
     pil_image.show()
 
 
-def getImagesFromDir(img_path):
+def getImagesToTestFromDir(img_path):
+    setStatus('Get images to test')
     dirs = []
     files = []
 
@@ -221,13 +232,40 @@ def getImagesFromDir(img_path):
         if os.path.isdir(full_file_path):
             dirs.append(os.path.join(img_path, image_file))
         elif os.path.isfile(full_file_path) and os.path.splitext(full_file_path)[1][1:] in ALLOWED_EXTENSIONS:
-            files.append(re.sub('^[.]/', '',os.path.join(img_path, image_file)))
+            files.append(re.sub('^[.]/', '', os.path.join(img_path, image_file)))
 
     for d in dirs:
-        for f in getImagesFromDir(d):
+        for f in getImagesToTestFromDir(d):
             files.append(re.sub('^[.]/', '', f))
 
     return files
+
+
+def getTrainedFaces(trainPath):
+    logging.debug('getTrainedFaces')
+    setStatus('Loading trained faces')
+    trainedFace = {}
+    for class_dir in os.listdir(trainPath):
+        if not os.path.isdir(os.path.join(trainPath, class_dir)):
+            continue
+        for image_name in os.listdir(os.path.join(trainPath, class_dir)):
+            trainedFace[unicodedata.normalize('NFC', re.sub("[.][^.]*$", "", image_name))] = class_dir
+    # logging.debug(training[unicodedata.normalize('NFC',"Boite 1 - Juin 2001 ?_Numériser 13.jpeg (705, 1380, 757, 1432)")])
+    logging.debug("getTrainedFaces done")
+    return trainedFace
+
+
+def getNewerTrainedFaceDate(trainPath):
+    #logging.debug('getNewerTrainedFaceDate')
+    maxdate = datetime.datetime.min
+    for class_dir in os.listdir(trainPath):
+        if not os.path.isdir(os.path.join(trainPath, class_dir)):
+            continue
+        if (datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(trainPath, class_dir))) > maxdate):
+            maxdate = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(trainPath, class_dir)))
+            #logging.debug(maxdate.strftime('%c')+' '+os.path.join(trainPath, class_dir))
+    #logging.debug("getNewerTrainedFaceDate done")
+    return maxdate
 
 
 def saveProgress():
@@ -240,6 +278,12 @@ def saveProgress():
         json.dump(progress, outfile, indent=4, sort_keys=True, default=str)
 
 
+def setStatus(status):
+    global progress
+    progress['status'] = status
+    saveProgress()
+
+
 def loadProgress():
     global progress
     try:
@@ -248,7 +292,7 @@ def loadProgress():
             if 'newFacesName' in progress_tmp:
                 progress = progress_tmp
     except IOError:
-        print('Do not exist today ('+PROGRESS_FILE+')', flush=True)
+        logging.error('Do not exist today ('+PROGRESS_FILE+')')
         saveProgress()
 
 
@@ -260,58 +304,43 @@ def loadConfig():
             if 'restartAskedTime' in config_tmp:
                 config = config_tmp
                 config['restartAskedTime'] = datetime.datetime.fromisoformat(config['restartAskedTime'])
-                # print(config)
+                # logging.debug(config)
+            if 'logLevel' in config:
+                logging.basicConfig(format='%(asctime)s %(levelname)s:%(message)s', level=config['logLevel'])
+            else:
+                logging.basicConfig(format='%(asctime)s %(levelname)s:%(message)s', level=10)
     except IOError:
-        print('Do not exist today ('+CONFIG_FILE+')', flush=True)
+        logging.error('Do not exist today ('+CONFIG_FILE+')')
 
 
 if __name__ == "__main__":
 
     loadConfig()
-
     if (config['logProgress']):
         bar = progressbar.ProgressBar()
 
     # read json progression
     loadProgress()
-    # print(progress)
+    # logging.debug(progress)
 
-    unknown_found = False
+    restartAsked = False
     counter = 0
 
     # Boucle tant qu'on a des modif
-    while (counter == 0) or (unknown_found and counter < 100):
+    while (counter == 0) or (restartAsked and counter < 100):
 
         startingDate = datetime.datetime.now()
-        print("Starting --------("+startingDate.isoformat()+")", flush=True)
+        logging.info("Starting --------("+startingDate.isoformat()+")")
+        setStatus('Starting')
 
-        unknown_found = False
+        restartAsked = False
         counter += 1
 
-        # read already found
-        print("Reading already found...", flush=True)
-        training = {}
-        for class_dir in os.listdir(TRAIN_PATH):
-            if not os.path.isdir(os.path.join(TRAIN_PATH, class_dir)):
-                continue
-            for image_name in os.listdir(os.path.join(TRAIN_PATH, class_dir)):
-                training[unicodedata.normalize('NFC', re.sub("[.][^.]*$", "", image_name))] = class_dir
-        #print(training[unicodedata.normalize('NFC',"Boite 1 - Juin 2001 ?_Numériser 13.jpeg (705, 1380, 757, 1432)")])
-        print("done", flush=True)
-
-        # STEP 1: Train the KNN classifier and save it to disk
-        # Once the model is trained and saved, you can skip this step next time.
-        print("Training KNN classifier...", flush=True)
-        classifier = train(TRAIN_PATH, model_save_path="trained_knn_model.clf", n_neighbors=2)
-        print("Training complete!", flush=True)
-
-        # STEP 2: Using the trained classifier, make predictions for unknown images
-
         # get the file list
-        files = getImagesFromDir(".")
-        # print(files.count(object))
+        logging.info('Get images to test')
+        files = getImagesToTestFromDir(".")
+        # logging.debug(files.count(object))
 
-        print("Predict...", flush=True)
         if (config['logProgress']):
             bar.max_value = len(files)
         progress['countImagesTotal'] = len(files)
@@ -322,41 +351,56 @@ if __name__ == "__main__":
         if (config['sortImages']):
             files.sort()
 
+        # --- Let's do the job (foreach image)
+        logging.info("Predict...")
         for image_file in files:
             full_file_path = os.path.join(TEST_PATH, image_file)
 
             cpt += 1
+
+            # ignore non image
+            if not os.path.isfile(full_file_path) or os.path.splitext(full_file_path)[1][1:] not in ALLOWED_EXTENSIONS:
+                # logging.debug("Ignore a file : "+full_file_path)
+                continue
+
+            # Is training needed
+            if (not os.path.exists(MODEL_FILE)) or (getNewerTrainedFaceDate(TRAIN_PATH) > datetime.datetime.fromtimestamp(os.path.getmtime(MODEL_FILE))):
+                #if (os.path.exists(MODEL_FILE)):
+                #    logging.debug(getNewerTrainedFaceDate(TRAIN_PATH).strftime('%c')+' > '+datetime.datetime.fromtimestamp(os.path.getmtime(MODEL_FILE)).strftime('%c'))
+                # read already found
+                trainedFace = getTrainedFaces(TRAIN_PATH)
+
+                # Train the KNN classifier and save it to disk
+                # Once the model is trained and saved, you can skip this step next time.
+                classifier = trainModel(TRAIN_PATH, model_save_path=MODEL_FILE, n_neighbors=2)
+
+            # manage progress
             if (config['logProgress']):
                 bar.update(cpt)
             progress['countImagesCurrent'] = cpt
             progress['nameImageCurrent'] = full_file_path
-            saveProgress()
-
-            if not os.path.isfile(full_file_path) or os.path.splitext(full_file_path)[1][1:] not in ALLOWED_EXTENSIONS:
-                #print("Ignore a file : "+full_file_path, flush=True)
-                continue
-
-            #print("Looking for faces in {}".format(image_file), flush=True)
+            setStatus("Recognition")
+            # logging.debug("Looking for faces in {}".format(image_file))
 
             # Find all people in the image using a trained classifier model
             # Note: You can pass in either a classifier file name or a classifier model instance
-            predictions = predict(full_file_path, model_path="trained_knn_model.clf")
+            predictions = predict(full_file_path, model_path=MODEL_FILE)
 
-            # Print results on the console
+            # logging.debug results on the console
             for name, (top, right, bottom, left) in predictions:
-                #print("- Found {} at ({}, {})".format(name, left, top), flush=True)
+                # logging.debug("- Found {} at ({}, {})".format(name, left, top))
 
                 face_key = unicodedata.normalize('NFC', ("%s (%d, %d, %d, %d)" % (image_file, left, top, right, bottom)).replace('/', '_'))
 
                 # if already managed ignore
-                if face_key in training:
+                if face_key in trainedFace:
                     continue
 
                 progress['newFacesCount'] += 1
                 progress['newFaces'] = face_key
                 progress['newFacesName'] = name
                 progress['newFacesValidated'] = True
-                print(face_key+" -> "+name)
+                logging.debug(face_key+" -> "+name)
 
                 # if unknown... add it
                 if name == "unknown":
@@ -368,14 +412,13 @@ if __name__ == "__main__":
                         i += 1
                         unknown_dir = os.path.join(TRAIN_PATH, "Unknown_"+str(i).zfill(6))
                     os.mkdir(unknown_dir)
-                    # print(unknown_dir, flush=True)
+                    # logging.debug(unknown_dir)
 
                     # get the face and save it
                     pil_image = Image.open(os.path.join(TEST_PATH, image_file)).convert("RGB")
                     cropped_image = pil_image.crop((left, top, right, bottom))
                     cropped_image.save(os.path.join(unknown_dir, face_key+".jpg"), "JPEG")
 
-                    unknown_found = True
                 else:
                     # if not already there
                     if not os.path.isfile(os.path.join(TRAIN_PATH, name, face_key+".jpg")):
@@ -394,12 +437,8 @@ if __name__ == "__main__":
                             cropped_image.save(saved_face_path, "JPEG")
                 saveProgress()
 
-            if unknown_found:
-                break
-
             loadConfig()
             if (startingDate < config['restartAskedTime']):
-                print("Restart asked.("+config['restartAskedTime'].isoformat()+" > "+startingDate.isoformat()+")", flush=True)
-                unknown_found = True
+                logging.info("Restart asked.("+config['restartAskedTime'].isoformat()+" > "+startingDate.isoformat()+")")
+                restartAsked = True
                 break
-
