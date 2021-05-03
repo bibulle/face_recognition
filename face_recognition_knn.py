@@ -106,6 +106,7 @@ def trainModel(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball
     y = []
 
     logging.info('Train Model')
+    setStatus('Train Model')
 
     # Loop through each person in the training set
     for class_dir in os.listdir(train_dir):
