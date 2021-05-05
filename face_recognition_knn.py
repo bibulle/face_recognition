@@ -397,12 +397,6 @@ if __name__ == "__main__":
                 if face_key in trainedFace:
                     continue
 
-                progress['newFacesCount'] += 1
-                progress['newFaces'] = face_key
-                progress['newFacesName'] = name
-                progress['newFacesValidated'] = True
-                logging.debug(face_key+" -> "+name)
-
                 # if unknown... add it
                 if name == "unknown":
 
@@ -420,6 +414,12 @@ if __name__ == "__main__":
                     cropped_image = pil_image.crop((left, top, right, bottom))
                     cropped_image.save(os.path.join(unknown_dir, face_key+".jpg"), "JPEG")
 
+                    progress['newFacesCount'] += 1
+                    progress['newFaces'] = face_key
+                    progress['newFacesName'] = name
+                    progress['newFacesValidated'] = True
+                    logging.debug(face_key+" -> "+name)
+
                 else:
                     # if not already there
                     if not os.path.isfile(os.path.join(TRAIN_PATH, name, face_key+".jpg")):
@@ -436,6 +436,10 @@ if __name__ == "__main__":
                             pil_image = Image.open(os.path.join(TEST_PATH, image_file)).convert("RGB")
                             cropped_image = pil_image.crop((left, top, right, bottom))
                             cropped_image.save(saved_face_path, "JPEG")
+                            progress['newFacesCount'] += 1
+                            progress['newFaces'] = face_key
+                            progress['newFacesName'] = name
+                            logging.debug(face_key+" -> "+name)
                 saveProgress()
 
             loadConfig()
