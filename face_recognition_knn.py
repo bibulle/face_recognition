@@ -43,6 +43,7 @@ import pickle
 import json
 import datetime
 import logging
+import sys
 from PIL import Image, ImageDraw
 import face_recognition
 from face_recognition.face_recognition_cli import image_files_in_folder
@@ -385,7 +386,14 @@ if __name__ == "__main__":
 
             # Find all people in the image using a trained classifier model
             # Note: You can pass in either a classifier file name or a classifier model instance
-            predictions = predict(full_file_path, model_path=MODEL_FILE)
+            predictions = []
+            try:
+                predictions = predict(full_file_path, model_path=MODEL_FILE)
+            except KeyboardInterrupt:
+                # quit
+                sys.exit()
+            except:
+                logging.error('Error occur during predict !! ('+full_file_path+')')
 
             # logging.debug results on the console
             for name, (top, right, bottom, left) in predictions:
